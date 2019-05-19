@@ -36,7 +36,7 @@ KERNEL_VERSION=$(make kernelrelease | grep "^4.")
 echo "Building kernel ${KERNEL_VERSION}"
 
 # Build everything
-make zImage modules dtbs
+make -j$(nproc) zImage modules dtbs
 
 # Copy to tmp destionation
 export TMP_DEST=/tmp/build
