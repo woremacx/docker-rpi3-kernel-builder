@@ -7,7 +7,8 @@ RUN apt-get update && apt-get install -y \
   curl \
   git-core \
   libncurses5-dev \
-  module-init-tools
+  module-init-tools \
+  bison
 
 # Install crosscompile toolchain for ARM64/aarch64
 RUN mkdir -p /opt/linaro && \
