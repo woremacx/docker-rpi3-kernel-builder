@@ -7,7 +7,6 @@ RUN apt-get update && apt-get install -y \
   curl \
   git-core \
   libncurses5-dev \
-  module-init-tools \
   bison \
   flex \
   kmod \
