@@ -1,71 +1,77 @@
 #!/usr/bin/env bash
-set -x -e
+set -e
+set -x
 
-export LINUX_SRC_DIR=${LINUX_SRC_DIR:-${WORKDIR}/linux}
-
-# Use -j<nproc> as default if MAKEFLAGS is not set
-if [[ -v "${MAKEFLAGS}" ]]; then
-  export MAKEFLAGS="-j$(nproc)"
-fi
-
-# Start building the kernel
-patch_dir_array=( "${PATCH_DIRS}" )
-
-for patch_dir in "${patch_dir_array[@]}"
-do
-  # Apply patches if `patch_dir` exists
-  if [ -d "${patch_dir}" ]; then
-    echo "Applying patches from ${patch_dir}"
-    for patch in "${patch_dir}/"*.patch; do
-      echo "Applying patch ${patch}"
-      patch -p1 < "${patch}"
-    done
-  fi
-done
-
-# Configure kernel
-if [[ -v "${ALLCONFIG}" ]]; then
-  make KCONFIG_ALLCONFIG="${KCONFIG_ALLCONFIG:-arch/arm/configs/bcm2709_defconfig}" ${ALLCONFIG}
+# Create target dir for build artefacts
+WORKDIR=$PWD
+BUILD_NR=${BUILD_NR:=$(date '+%Y%m%d-%H%M%S')}
+if [ "$TIMESTAMP_OUTPUT" == "true" ]; then
+  BUILD_DEST=/builds/$BUILD_NR
 else
-  make "${DEFCONFIG:-bcm2709_defconfig}"
+  BUILD_DEST=/builds
+fi
+mkdir -p $BUILD_DEST
+
+cd $LINUX
+
+# Accept custom defconfig
+DEFCONFIG=${DEFCONFIG:="bcmrpi3_defconfig"}
+if [ "x$DEFCONFIG" != "xbcmrpi3_defconfig" ]; then
+  cp /defconfigs/$DEFCONFIG ./arch/arm64/configs/
 fi
 
-# Store and print kernelrease
-make kernelrelease
-KERNEL_VERSION=$(make kernelrelease | grep "^4.")
-echo "Building kernel ${KERNEL_VERSION}"
+# Compile Linux kernel
+nproc=$(nproc)
+MAKE="make -j$nproc ARCH=arm64 CROSS_COMPILE=$CROSS_COMPILE"
 
-# Build everything
-make -j$(nproc) zImage modules dtbs
+# Configure the kernel
+$MAKE $DEFCONFIG
 
-# Copy to tmp destionation
-export TMP_DEST=/tmp/build
-INSTALL_MOD_PATH="${TMP_DEST}" make modules_install
+# Get exact kernel version string
+KR=$($MAKE kernelrelease | grep "^4")
+echo "Kernel release= $KR"
 
-mkdir -p "${TMP_DEST}/boot/overlays"
-cp arch/arm/boot/zImage "${TMP_DEST}/boot/kernel-${KERNEL_VERSION}.img"
-cp arch/arm/boot/dts/*.dtb "${TMP_DEST}"/boot/
-cp arch/arm/boot/dts/overlays/*.dtb* "${TMP_DEST}"/boot/overlays/
-cp arch/arm/boot/dts/overlays/README "${TMP_DEST}"/boot/overlays/
+# Copy kernel config for later reference
+cp .config $BUILD_DEST/$KR.config
 
-# Copy config.txt to /boot if it exists
-if [ -f config.txt ] ; then
-  cp config.txt "${TMP_DEST}"/boot/
-  # Add kernel version to config.txt
-  echo -e "\nkernel=kernel-${KERNEL_VERSION}.img" >> "${TMP_DEST}"/boot/config.txt
+# Build the kernel and modules
+$MAKE
+$MAKE modules
+
+# Install modules
+INSTALLDIR=$WORKDIR/$KR
+if [[ -d $INSTALLDIR ]]; then
+  rm -fr $INSTALLDIR
+  mkdir -p $INSTALLDIR
 fi
+$MAKE INSTALL_MOD_PATH=$INSTALLDIR modules_install
+rm $INSTALLDIR/lib/modules/$KR/{build,source}
 
-# Copy cmdline.txt to /boot if it exists
-if [ -f cmdline.txt ] ; then
-  cp cmdline.txt "${TMP_DEST}"/boot/
-fi
+# Build kernel module dependencies
+depmod -a -b $INSTALLDIR $KR
 
-# Compile and copy dt-blob.dts to /boot/dt-blob.bin if it exists
-if [ -f dt-blob.dts ] ; then
-  ./scripts/dtc/dtc -I dts -O dtb -o "${TMP_DEST}"/boot/dt-blob.bin dt-blob.dts
-fi
+# Install kernel, dtb and overlays
+mkdir -p $INSTALLDIR/boot/overlays
+cp arch/arm64/boot/Image $INSTALLDIR/boot/kernel8.img
+cp arch/arm64/boot/dts/broadcom/bcm2710-rpi-3-b.dtb $INSTALLDIR/boot/
+cp arch/arm64/boot/dts/broadcom/bcm2710-rpi-3-b-plus.dtb $INSTALLDIR/boot/
+cp arch/arm64/boot/dts/overlays/*.dtbo $INSTALLDIR/boot/overlays/
 
-# Create tar file of everything
-mkdir -p "${BUILD_DEST}"
-tar -cvzf "${BUILD_DEST}/kernel-${KERNEL_VERSION}.tar.gz" -C $TMP_DEST .
-sha256sum "${BUILD_DEST}/kernel-${KERNEL_VERSION}.tar.gz" > "${BUILD_DEST}/kernel-${KERNEL_VERSION}.sha256"
+# Create tar file, all kernel files
+TARFILE1=$KR.tar.gz
+tar -cvzf $WORKDIR/$TARFILE1 -C $INSTALLDIR .
+cd $WORKDIR
+sha256sum $TARFILE1 > $TARFILE1.sha256
+
+# Create tar file, only bootfiles
+TARFILE2=bootfiles.tar.gz
+tar -cvzf $WORKDIR/$TARFILE2 -C $INSTALLDIR/boot .
+cd $WORKDIR
+sha256sum $TARFILE2 > $TARFILE2.sha256
+
+# Copy build artefacts
+cp $TARFILE1* $BUILD_DEST/
+cp $TARFILE2* $BUILD_DEST/
+
+# List build artefacts
+ls -al $BUILD_DEST/
