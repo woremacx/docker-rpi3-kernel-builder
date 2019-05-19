@@ -12,8 +12,6 @@ else
 fi
 mkdir -p $BUILD_DEST
 
-cd $LINUX
-
 # Accept custom defconfig
 DEFCONFIG=${DEFCONFIG:="bcmrpi3_defconfig"}
 if [ "x$DEFCONFIG" != "xbcmrpi3_defconfig" ]; then

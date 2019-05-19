@@ -20,10 +20,10 @@ RUN mkdir -p /opt/linaro && \
 ENV CROSS_COMPILE=/opt/linaro/gcc-linaro-7.4.1-2019.02-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-
 
 # Create working directory
-RUN mkdir -p /workdir
+RUN mkdir -p /workdir/builds
 WORKDIR /workdir
 ENV WORKDIR /workdir
-ENV BUILD_DEST /builds
+ENV BUILD_DEST /workdir/builds
 
 # Add the build script and set it as default command
 COPY build-rpi3-kernel /opt/bin/build-rpi3-kernel
