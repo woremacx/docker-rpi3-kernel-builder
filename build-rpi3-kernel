@@ -5,10 +5,9 @@ set -x
 # Create target dir for build artefacts
 WORKDIR=$PWD
 BUILD_NR=${BUILD_NR:=$(date '+%Y%m%d-%H%M%S')}
+BUILD_DEST=${BUILD_DEST:="/workdir/builds"}
 if [ "$TIMESTAMP_OUTPUT" == "true" ]; then
-  BUILD_DEST=/builds/$BUILD_NR
-else
-  BUILD_DEST=/builds
+  BUILD_DEST=${BUILD_DEST}/$BUILD_NR
 fi
 mkdir -p $BUILD_DEST
 
